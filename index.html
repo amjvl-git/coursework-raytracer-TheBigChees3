@@ -41,6 +41,9 @@ class Vec3 {
         let mag = this.magnitude();
         return this.scale(1 / mag);
     }
+    reflect(normal) {
+        return this.minus(normal.scale(2 * this.dot(normal)));
+    }
 }
 
 class Ray {
@@ -54,10 +57,11 @@ class Ray {
 }
 
 class Sphere {
-    constructor(centre, radius, colour) {
+    constructor(centre, radius, colour, reflective = 0) {
         this.centre = centre;
         this.radius = radius;
         this.colour = colour;
+        this.reflective = reflective;
     }
     rayIntersects(ray) {
         let oc = ray.origin.minus(this.centre);
@@ -68,52 +72,96 @@ class Sphere {
         if (discriminant < 0) return -1;
         return (-b - Math.sqrt(discriminant)) / (2.0 * a);
     }
+    normalAt(point) {
+        return point.minus(this.centre).normalised();
+    }
 }
 
-function traceRay(ray) {
+const light = {
+    position: new Vec3(-1, 1, -0.5).normalised(),
+    intensity: new Vec3(1, 1, 1),
+    ambient: new Vec3(0.1, 0.1, 0.1)
+};
+
+function isInShadow(point) {
+    let shadowFactor = 0;
+    let numSamples = 10;
+    for (let i = 0; i < numSamples; i++) {
+        let jitter = new Vec3((Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1, 0);
+        let shadowRay = new Ray(point, light.position.add(jitter).normalised());
+        for (let sphere of spheres) {
+            if (sphere.rayIntersects(shadowRay) > 0) {
+                shadowFactor += 1;
+                break;
+            }
+        }
+    }
+    return shadowFactor / numSamples;
+}
+
+function traceRay(ray, depth = 5) {
+    if (depth <= 0) return new Vec3(0, 0, 0);
+    
     let closestT = Infinity;
     let hitSphere = null;
     
-    for (let i = 0; i < spheres.length; i++) {
-        let t = spheres[i].rayIntersects(ray);
+    for (let sphere of spheres) {
+        let t = sphere.rayIntersects(ray);
         if (t > 0 && t < closestT) {
             closestT = t;
-            hitSphere = spheres[i];
+            hitSphere = sphere;
         }
     }
     
-    if (hitSphere) return hitSphere.colour;
-    return new Vec3(0.3, 0.5, 0.9); // Background color
+    if (!hitSphere) return new Vec3(0.3, 0.5, 0.9);
+    
+    let hitPoint = ray.pointAt(closestT);
+    let normal = hitSphere.normalAt(hitPoint);
+    let lightDir = light.position.normalised();
+    
+    let ambient = light.ambient;
+    let diffuse = Math.max(normal.dot(lightDir), 0);
+    let reflection = lightDir.minus(normal.scale(2 * normal.dot(lightDir))).normalised();
+    let viewDir = ray.direction.scale(-1).normalised();
+    let specular = Math.pow(Math.max(viewDir.dot(reflection), 0), 32);
+    
+    let shadowFactor = 1 - isInShadow(hitPoint.add(normal.scale(0.001)));
+    let colour = hitSphere.colour.multiply(ambient.add(light.intensity.scale(diffuse + specular))).scale(shadowFactor);
+    
+    if (hitSphere.reflective > 0) {
+        let reflectRay = new Ray(hitPoint.add(normal.scale(0.001)), ray.direction.reflect(normal));
+        colour = colour.add(traceRay(reflectRay, depth - 1).scale(hitSphere.reflective));
+    }
+    
+    return colour;
 }
-
-function setPixel(ctx, x, y, colour) {
-    let r = Math.floor(colour.x * 255);
-    let g = Math.floor(colour.y * 255);
-    let b = Math.floor(colour.z * 255);
-    ctx.fillStyle = `rgb(${r},${g},${b})`;
-    ctx.fillRect(x, y, 1, 1);
-}
-
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const imageWidth = canvas.width;
-const imageHeight = canvas.height;
-const aspectRatio = imageHeight / imageWidth;
 
 const spheres = [
-    new Sphere(new Vec3(0, 0, -1), 0.3, new Vec3(1, 0, 0)),
+    new Sphere(new Vec3(0, 0, -1), 0.3, new Vec3(1, 0, 0), 0.3),
     new Sphere(new Vec3(0, -100.5, -1), 100, new Vec3(0, 1, 0))
 ];
 
-for (let i = 0; i < imageWidth; i++) {
-    for (let j = 0; j < imageHeight; j++) {
-        let u = (i / imageWidth) * 2 - 1;
-        let v = (j / imageHeight) * 2 - 1;
-        let ray = new Ray(new Vec3(0, 0, 0), new Vec3(u, v * aspectRatio, -1));
-        let colour = traceRay(ray);
-        setPixel(ctx, i, imageHeight - j - 1, colour);
+function render() {
+    let canvas = document.getElementById("canvas");
+    let ctx = canvas.getContext("2d");
+    let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+            let u = x / (canvas.width - 1);
+            let v = 1 - y / (canvas.height - 1);
+            let ray = new Ray(new Vec3(0, 0, 0), new Vec3(u * 2 - 1, v * 2 - 1, -1));
+            let colour = traceRay(ray);
+            let index = (y * canvas.width + x) * 4;
+            imageData.data[index] = colour.x * 255;
+            imageData.data[index + 1] = colour.y * 255;
+            imageData.data[index + 2] = colour.z * 255;
+            imageData.data[index + 3] = 255;
+        }
     }
+    ctx.putImageData(imageData, 0, 0);
 }
+render();
 </script>
 
 </body>
