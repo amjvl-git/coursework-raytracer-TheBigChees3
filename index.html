@@ -78,17 +78,19 @@ class Sphere {
 }
 
 const light = {
-    position: new Vec3(1.5, 1, 1).normalised(),
-    intensity: new Vec3(0.5, 0.5, 0.5),
+    position: new Vec3(1, 1, 0.5).normalised(),
+    intensity: new Vec3(1, 1, 1),
     ambient: new Vec3(0.1, 0.1, 0.1)
 };
 
 function isInShadow(point) {
     let shadowFactor = 0;
-    let numSamples = 10;
+    let numSamples = 16;
+    let radius = 0.2;
     for (let i = 0; i < numSamples; i++) {
-        let jitter = new Vec3((Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1, 0);
-        let shadowRay = new Ray(point, light.position.add(jitter).normalised());
+        let angle = Math.random() * 2 * Math.PI;
+        let offset = new Vec3(Math.cos(angle) * radius * Math.random(), Math.sin(angle) * radius * Math.random(), 0);
+        let shadowRay = new Ray(point, light.position.add(offset).normalised());
         for (let sphere of spheres) {
             if (sphere.rayIntersects(shadowRay) > 0) {
                 shadowFactor += 1;
@@ -96,7 +98,7 @@ function isInShadow(point) {
             }
         }
     }
-    return shadowFactor / numSamples;
+    return shadowFactor / numSamples * 0.9;
 }
 
 function traceRay(ray, depth = 5) {
@@ -130,16 +132,16 @@ function traceRay(ray, depth = 5) {
     
     if (hitSphere.reflective > 0) {
         let reflectRay = new Ray(hitPoint.add(normal.scale(0.001)), ray.direction.reflect(normal));
-        colour = colour.add(traceRay(reflectRay, depth - 1).scale(hitSphere.reflective));
+        colour = colour.add(traceRay(reflectRay, depth - 1).scale(hitSphere.reflective * 0.5));
     }
     
     return colour;
 }
 
 const spheres = [
-    new Sphere(new Vec3(0, 0, -1), 0.3, new Vec3(1, 0, 0)),  
-    new Sphere(new Vec3(0.5, 0.2, -1), 0.2, new Vec3(0, 0, 1)), 
-    new Sphere(new Vec3(0, -100.5, -1), 100, new Vec3(0, 1, 0)) 
+    new Sphere(new Vec3(0, 0, -1), 0.3, new Vec3(1, 0, 0), 0.3),  
+    new Sphere(new Vec3(0.5, 0.2, -1), 0.2, new Vec3(0, 0, 1), 0.2), 
+    new Sphere(new Vec3(0, -100.5, -1), 100, new Vec3(0, 1, 0))
 ];
 
 function render() {
