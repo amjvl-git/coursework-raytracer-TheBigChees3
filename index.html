@@ -85,7 +85,7 @@ const light = {
 
 function isInShadow(point) {
     let shadowFactor = 0;
-    let numSamples = 16;
+    let numSamples = 256;
     let radius = 0.2;
     for (let i = 0; i < numSamples; i++) {
         let angle = Math.random() * 2 * Math.PI;
